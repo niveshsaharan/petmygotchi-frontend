@@ -1,0 +1,11 @@
+# folders
+build/
+node_modules/
+# files
+**/*.less
+**/*.css
+**/*.scss
+**/*.json
+**/*.png
+**/*.svg
+src/fonts/

@@ -17,8 +17,37 @@ import getUrlParam from "./helpers/getUrlParam";
 import Faq from "./components/Faq";
 import Aavegotchis from "./components/Aavegotchis";
 import Parcels from "./components/Parcels";
+import getAaltarByLevel from "./helpers/getAaltarByLevel";
+import { ApolloClient, InMemoryCache, gql, useLazyQuery } from "@apollo/client";
+import moment from "moment";
+import getChannelingCutoffTimeInUTC from "./helpers/getChannelingCutoffTimeInUTC";
 const { MultiCall } = require("@indexed-finance/multicall");
 let web3Modal = Web3ModalSetup();
+
+const aavegotchiCoreMaticClient = new ApolloClient({
+  uri: "https://api.thegraph.com/subgraphs/name/aavegotchi/aavegotchi-core-matic",
+  cache: new InMemoryCache(),
+});
+
+const aavegotchiLendingMaticClient = new ApolloClient({
+  uri: "https://api.thegraph.com/subgraphs/name/froid1911/aavegotchi-lending",
+  cache: new InMemoryCache(),
+});
+
+const aavegotchiRealmMaticClient = new ApolloClient({
+  uri: "https://api.thegraph.com/subgraphs/name/aavegotchi/aavegotchi-realm-matic",
+  cache: new InMemoryCache(),
+});
+
+const gotchiverseMaticClient = new ApolloClient({
+  uri: "https://api.thegraph.com/subgraphs/name/aavegotchi/gotchiverse-matic",
+  cache: new InMemoryCache(),
+});
+const aavegotchiSvgClient = new ApolloClient({
+  uri: "https://api.thegraph.com/subgraphs/name/aavegotchi/aavegotchi-svg",
+  cache: new InMemoryCache(),
+});
+
 function App() {
   const [injectedProvider, setInjectedProvider] = useState();
   const [address, setAddress] = useState();
@@ -31,8 +60,8 @@ function App() {
   const [feePerPetPerDay, setFeePerPetPerDay] = useState();
   const [whenNextDepositIsRequired, setWhenNextDepositIsRequired] = useState();
   const [nextPetTimeForChildrenOf, setNextPetTimeForChildrenOf] = useState();
-  const [childrenOf, setChildrenOf] = useState([]);
-  const [realmIds, setRealIds] = useState([]);
+  const [gotchis, setGotchis] = useState({});
+  const [parcels, setParcels] = useState([]);
 
   const impersonate = getUrlParam("coinbase");
 
@@ -84,6 +113,283 @@ function App() {
   // If you want to make 🔐 write transactions to your contracts, use the userSigner:
   const writeContracts = useContractLoader(userSigner, contractConfig, localChainId);
   const tx = Transactor(userSigner);
+
+  const getAavegotchiUserQuery = gql`
+    query GetUsers($address: String!) {
+      users(where: { id: $address }) {
+        id
+        gotchisOwned {
+          id
+          gotchiId
+          owner {
+            id
+          }
+          originalOwner {
+            id
+          }
+          name
+          status
+          escrow
+          kinship
+          lastInteracted
+          experience
+          locked
+          createdAt
+          claimedAt
+          locked
+          lending
+          activeListing
+        }
+        gotchisLentOut
+        gotchisBorrowed
+      }
+    }
+  `;
+
+  const getAavegotchiLendingsQuery = gql`
+    query GetGotchiLendings($address: String!) {
+      gotchiLendings: gotchiLendings(first: 1000, where: { lender: $address, cancelled: false, completed: false }) {
+        id
+        lender
+        borrower
+        upfrontCost
+        period
+        splitOwner
+        splitBorrower
+        splitOther
+        originalOwner
+        rentDuration
+        timeAgreed
+        completed
+        lastClaimed
+        gotchi {
+          id
+          gotchiId
+          owner {
+            id
+          }
+          name
+          status
+          escrow
+          kinship
+          lastInteracted
+          experience
+          locked
+          createdAt
+          claimedAt
+          locked
+          lending
+          activeListing
+        }
+      }
+
+      gotchiBorrowings: gotchiLendings(first: 1000, where: { borrower: $address, cancelled: false, completed: false }) {
+        id
+        lender
+        borrower
+        upfrontCost
+        period
+        splitOwner
+        splitBorrower
+        splitOther
+        originalOwner
+        rentDuration
+        timeAgreed
+        completed
+        lastClaimed
+        gotchi {
+          id
+          gotchiId
+          owner {
+            id
+          }
+          name
+          status
+          escrow
+          kinship
+          lastInteracted
+          experience
+          locked
+          createdAt
+          claimedAt
+          locked
+          lending
+          activeListing
+        }
+      }
+    }
+  `;
+
+  const getAavegotchiSvgQuery = gql`
+    query GetSVG($ids: [String!]!) {
+      aavegotchis(first: 1000, where: { id_in: $ids }) {
+        id
+        svg
+      }
+    }
+  `;
+
+  const getGotchisChannelQuery = gql`
+    query GetGotchisData($ids: [String!]!) {
+      gotchis(orderBy: lastChanneledAlchemica, orderDirection: desc, where: { id_in: $ids }) {
+        id
+        lastChanneledAlchemica
+      }
+    }
+  `;
+
+  const [getAavegotchiSvgQueryData] = useLazyQuery(getAavegotchiSvgQuery, {
+    client: aavegotchiSvgClient,
+  });
+
+  const [getAavegotchiLendingsQueryData] = useLazyQuery(getAavegotchiLendingsQuery, {
+    client: aavegotchiLendingMaticClient,
+  });
+
+  const [getGotchisChannelQueryData] = useLazyQuery(getGotchisChannelQuery, {
+    client: gotchiverseMaticClient,
+  });
+
+  const [getAavegotchiUserQueryData] = useLazyQuery(getAavegotchiUserQuery, {
+    client: aavegotchiCoreMaticClient,
+    onCompleted: async ({ users: data }) => {
+      const aavegotchiUser = data[0];
+
+      const myGotchis = {};
+      aavegotchiUser.gotchisOwned
+        .filter(gotchi => {
+          return !aavegotchiUser.gotchisBorrowed.includes(gotchi.gotchiId);
+        })
+        .forEach(gotchi => {
+          gotchi = { ...gotchi };
+          gotchi.borrowed = false;
+          gotchi.owned = true;
+
+          myGotchis[gotchi.gotchiId] = gotchi;
+        });
+
+      const b = await getAavegotchiLendingsQueryData({
+        variables: { address: (impersonate || address).toLowerCase() },
+      });
+      const gotchiLendings = b.data.gotchiLendings;
+      const gotchiBorrowings = b.data.gotchiBorrowings;
+
+      gotchiLendings.forEach(gotchiLending => {
+        const gotchi = { ...gotchiLending.gotchi };
+        if (parseInt(gotchi.timeAgreed) > 0) {
+          gotchi.owned = true;
+          gotchi.borrowed = false;
+          gotchi.owner = { id: impersonate || address };
+          gotchi.borrower = gotchiLending.borrower;
+          gotchi.listingId = gotchiLending.id;
+          gotchi.lender = gotchiLending.lender;
+          gotchi.period = gotchiLending.period;
+          gotchi.rentDuration = gotchiLending.rentDuration;
+          gotchi.timeAgreed = gotchiLending.timeAgreed;
+          gotchi.upfrontCost = gotchiLending.upfrontCost;
+          gotchi.revenueSplit = [gotchi.splitOwner, gotchi.splitBorrower, gotchi.splitOther];
+
+          myGotchis[gotchi.gotchiId] = gotchi;
+        }
+      });
+
+      gotchiBorrowings.forEach(gotchiBorrowing => {
+        const gotchi = { ...gotchiBorrowing.gotchi };
+        gotchi.owned = false;
+        gotchi.borrowed = true;
+        gotchi.owner = gotchiBorrowing.lender;
+        gotchi.borrower = gotchiBorrowing.borrower;
+        gotchi.listingId = gotchiBorrowing.id;
+        gotchi.lender = gotchiBorrowing.lender;
+        gotchi.period = gotchiBorrowing.period;
+        gotchi.rentDuration = gotchiBorrowing.rentDuration;
+        gotchi.timeAgreed = gotchiBorrowing.timeAgreed;
+        gotchi.upfrontCost = gotchiBorrowing.upfrontCost;
+        gotchi.revenueSplit = [gotchiBorrowing.splitOwner, gotchiBorrowing.splitBorrower, gotchiBorrowing.splitOther];
+        myGotchis[gotchi.gotchiId] = gotchi;
+      });
+
+      // Get SVGs
+      let svgs = await getAavegotchiSvgQueryData({ variables: { ids: Object.keys(myGotchis) } });
+      svgs.data.aavegotchis.forEach(svg => {
+        myGotchis[svg.id].svg = svg.svg;
+      });
+
+      let channeledData = await getGotchisChannelQueryData({ variables: { ids: Object.keys(myGotchis) } });
+      channeledData.data.gotchis.forEach(channeled => {
+        myGotchis[channeled.id].lastChanneled = parseInt(channeled.lastChanneledAlchemica);
+        myGotchis[channeled.id].canChannelNow =
+          getChannelingCutoffTimeInUTC() >= parseInt(channeled.lastChanneledAlchemica) * 1000;
+      });
+
+      setGotchis(myGotchis);
+    },
+  });
+  //
+
+  const getParcelsQuery = gql`
+    query GetParcels($owner: String!) {
+      parcels(first: 1000, orderBy: tokenId, where: { tokenId_gt: 0, owner: $owner }) {
+        id
+        parcelHash
+        district
+        size
+      }
+    }
+  `;
+
+  const getParcelsChannelDataQuery = gql`
+    query GetParcelsData($ids: [String!]!) {
+      parcels(orderBy: lastChanneledAlchemica, orderDirection: desc, where: { id_in: $ids }) {
+        id
+        equippedInstallations
+        lastChanneledAlchemica
+      }
+    }
+  `;
+
+  const [getParcelsQueryData] = useLazyQuery(getParcelsQuery, {
+    client: aavegotchiRealmMaticClient,
+    onCompleted: ({ parcels: data }) => {
+      if (data && data.length) {
+        getParcelsChannelDataQueryData({ variables: { ids: data.map(parcel => parcel.id) } });
+      }
+
+      setParcels(data);
+    },
+  });
+
+  const [getParcelsChannelDataQueryData] = useLazyQuery(getParcelsChannelDataQuery, {
+    client: gotchiverseMaticClient,
+    onCompleted: ({ parcels: data }) => {
+      const parcelData = [...parcels].reduce((prev, curr) => {
+        prev[curr.id] = { ...curr };
+        return prev;
+      }, {});
+
+      data.forEach(d => {
+        const aaltar = getAaltarByLevel(d.equippedInstallations);
+        parcelData[d.id] = parcelData[d.id] || {};
+        parcelData[d.id].equippedInstallations = d.equippedInstallations;
+        parcelData[d.id].lastChanneled = parseInt(d.lastChanneledAlchemica) * 1000;
+        parcelData[d.id].aaltar = aaltar;
+
+        if (aaltar) {
+          if (parcelData[d.id].lastChanneled) {
+            parcelData[d.id].nextChannelAt = parseInt(parcelData[d.id].lastChanneled) + aaltar.hours * 60 * 60 * 1000;
+          } else {
+            parcelData[d.id].nextChannelAt = new Date().getTime();
+          }
+
+          parcelData[d.id].channelable =
+            parcelData[d.id].nextChannelAt && moment().isSameOrAfter(parcelData[d.id].nextChannelAt);
+        }
+      });
+
+      setParcels(Object.values(parcelData));
+    },
+  });
+
   const loadData = useCallback(
     async (functions = []) => {
       if (!functions.length) {
@@ -97,13 +403,14 @@ function App() {
           "PetMyGotchi:countParents",
           "PetMyGotchi:getPricePerPetPerDayForParent",
           "PetMyGotchi:countTakingCareOf",
-          "PetMyGotchi:childrenOf",
-
+          //   "PetMyGotchi:childrenOf",
           // Aavegotchi
           "AavegotchiFacet:isPetOperatorForAll",
 
           // Realm
-          "AavegotchiRealmFacet:tokenIdsOfOwner",
+          //    "AavegotchiRealmFacet:tokenIdsOfOwner",
+          "function:getAavegotchiUserQueryData",
+          "function:getParcelsQueryData",
         ];
       }
 
@@ -184,23 +491,8 @@ function App() {
           }
 
           if (functions.includes("PetMyGotchi:countTakingCareOf")) {
-            functionsCalled.push("PetMyGotchi:countTakingCareOf");
-            inputs.push({
-              interface: externalContracts[targetNetwork.chainId].contracts.PetMyGotchi.abi,
-              target: externalContracts[targetNetwork.chainId].contracts.PetMyGotchi.address,
-              function: "countTakingCareOf",
-              args: [],
-            });
-          }
-
-          if (functions.includes("PetMyGotchi:childrenOf") && (impersonate || address)) {
-            functionsCalled.push("PetMyGotchi:childrenOf");
-            inputs.push({
-              interface: externalContracts[targetNetwork.chainId].contracts.PetMyGotchi.abi,
-              target: externalContracts[targetNetwork.chainId].contracts.PetMyGotchi.address,
-              function: "childrenOf",
-              args: [impersonate || address],
-            });
+            const takingCareOfCount = await readContracts.PetMyGotchi.countTakingCareOf();
+            setTotalPets(ethers.BigNumber.from(takingCareOfCount).toString());
           }
         }
 
@@ -212,18 +504,6 @@ function App() {
               target: externalContracts[targetNetwork.chainId].contracts.AavegotchiFacet.address,
               function: "isPetOperatorForAll",
               args: [impersonate || address, GELATO_ADDRESS],
-            });
-          }
-        }
-
-        if (readContracts.AavegotchiRealmFacet) {
-          if (functions.includes("AavegotchiRealmFacet:tokenIdsOfOwner") && (impersonate || address)) {
-            functionsCalled.push("AavegotchiRealmFacet:tokenIdsOfOwner");
-            inputs.push({
-              interface: externalContracts[targetNetwork.chainId].contracts.AavegotchiRealmFacet.abi,
-              target: externalContracts[targetNetwork.chainId].contracts.AavegotchiRealmFacet.address,
-              function: "tokenIdsOfOwner",
-              args: [impersonate || address],
             });
           }
         }
@@ -246,7 +526,7 @@ function App() {
                 setTotalPetsOfMine(ethers.BigNumber.from(roundData[1][i]).toString());
                 break;
               case "PetMyGotchi:nextPetTimeForChildrenOf":
-                setNextPetTimeForChildrenOf(ethers.BigNumber.from(roundData[1][i]).toNumber());
+                setNextPetTimeForChildrenOf(roundData[1][i] ? ethers.BigNumber.from(roundData[1][i]).toNumber() : 0);
                 break;
               case "PetMyGotchi:countParents":
                 setTotalParents(ethers.BigNumber.from(roundData[1][i]).toString());
@@ -254,22 +534,22 @@ function App() {
               case "PetMyGotchi:getPricePerPetPerDayForParent":
                 setFeePerPetPerDay(ethers.BigNumber.from(roundData[1][i]).toString());
                 break;
-              case "PetMyGotchi:countTakingCareOf":
-                setTotalPets(ethers.BigNumber.from(roundData[1][i]).toString());
-                break;
               case "AavegotchiFacet:isPetOperatorForAll":
                 setIsPetOperatorForAll(roundData[1][i]);
-                break;
-              case "PetMyGotchi:childrenOf":
-                setChildrenOf(roundData[1][i]);
-                break;
-              case "AavegotchiRealmFacet:tokenIdsOfOwner":
-                setRealIds(roundData[1][i]);
                 break;
               default:
                 break;
             }
           }
+        }
+
+        if (functions.includes("function:getAavegotchiUserQueryData") && (impersonate || address)) {
+          getAavegotchiUserQueryData({ variables: { address: (impersonate || address).toLowerCase() } });
+        }
+
+        // Get Parcels
+        if (functions.includes("function:getParcelsQueryData") && (impersonate || address)) {
+          getParcelsQueryData({ variables: { owner: (impersonate || address).toLowerCase() } });
         }
       }
     },
@@ -279,124 +559,10 @@ function App() {
       impersonate,
       readContracts.AavegotchiFacet,
       readContracts.PetMyGotchi,
-      readContracts.AavegotchiRealmFacet,
       targetNetwork.chainId,
+      getParcelsQueryData,
+      getAavegotchiUserQueryData,
     ],
-  );
-
-  const getChannelingSignature = useCallback(
-    async (parcelId, gotchiId, lastChanneled, availableIds) => {
-      let message = "";
-
-      const type = parcelId === null ? "gotchi" : "parcel";
-      if (gotchiId !== null) {
-        message = "Do you want to channel Alchemica with Gotchi #" + gotchiId + " now?";
-      } else if (parcelId !== null) {
-        message = "Do you want to channel Alchemica for Parcel #" + parcelId + " now?";
-      }
-
-      if (!window.confirm(message)) {
-        return;
-      }
-
-      const availableOptions = availableIds.map(realm => ethers.BigNumber.from(realm).toNumber());
-
-      if (parcelId === null && type === "gotchi") {
-        parcelId = window.prompt(
-          "Enter the Parcel ID that you want to channel Alchemica for. (Available parcels are: " +
-            availableOptions.join(", ") +
-            ")",
-        );
-      }
-
-      if (gotchiId === null && type === "parcel") {
-        gotchiId = window.prompt(
-          "Enter the Gotchi ID that you want to channel Alchemica with. (Available gotchis are: " +
-            availableOptions.join(", ") +
-            ")",
-        );
-
-        // Get last channeled
-        if (gotchiId && parseInt(gotchiId) > 0) {
-          lastChanneled = await readContracts.AavegotchiRealmFacet.getLastChanneled(gotchiId);
-        }
-      }
-
-      if (parseInt(parcelId) > 0 && parseInt(gotchiId)) {
-        // Find from API
-        let a = await window.fetch(
-          "https://api.gotchiverse.io/realm/alchemica/signature/channel/get",
-          {
-            headers: {
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({ parcelId: parcelId, gotchiId: gotchiId, lastChanneled: lastChanneled + "" }),
-            method: "POST",
-            mode: "cors",
-            credentials: "omit",
-          },
-        );
-        a = await a.json();
-        let signature = Object.values(a);
-
-        if (!signature) {
-          console.log(`let a = await fetch("https://api.gotchiverse.io/realm/alchemica/signature/channel/get", {
-      "headers": {
-        "accept": "*/*",
-        "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
-        "cache-control": "no-cache",
-        "content-type": "application/json",
-        "pragma": "no-cache",
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "cross-site",
-        "sec-gpc": "1"
-      },
-      "referrerPolicy": "same-origin",
-      "body": JSON.stringify({parcelId:${parcelId},gotchiId:${gotchiId},lastChanneled:"${lastChanneled}"}),
-      "method": "POST",
-      "mode": "cors",
-      "credentials": "omit"
-    });
-    a = await a.json();
-    console.log(JSON.stringify(Object.values(a)));
-   `);
-          signature = JSON.parse(window.prompt("Paste the signature and submit"));
-        }
-
-        if (Array.isArray(signature)) {
-          tx(
-            writeContracts.AavegotchiRealmFacet.channelAlchemica(
-              parcelId,
-              gotchiId,
-              lastChanneled,
-              utils.hexlify(signature),
-            ),
-            result => {
-              if (result.hash) {
-                notification.close(result.hash);
-                if (result.status === "confirmed" || result.status === 1) {
-                  notification.success({
-                    message: "Transaction success!",
-                    description: "Successfully channeled.",
-                    placement: "topRight",
-                  });
-                  loadData(["PetMyGotchi:childrenOf"]);
-                }
-              }
-            },
-          );
-        } else if (signature) {
-          notification.error({
-            message: "Signature Error",
-            description: "Invalid signature",
-            placement: "topRight",
-            duration: 30,
-          });
-        }
-      }
-    },
-    [loadData, tx, readContracts.AavegotchiRealmFacet, writeContracts.AavegotchiRealmFacet],
   );
 
   useEffect(() => {
@@ -631,30 +797,11 @@ function App() {
           <Faq feePerPetPerDay={feePerPetPerDay} />
         </div>
 
-        {childrenOf && childrenOf.length > 0 && (
-          <Aavegotchis
-            readContracts={readContracts}
-            address={impersonate || address}
-            childrenIds={childrenOf}
-            provider={provider}
-            targetNetwork={targetNetwork}
-            contracts={externalContracts[targetNetwork.chainId].contracts}
-            getChannelingSignature={getChannelingSignature}
-          />
+        {gotchis && Object.keys(gotchis).length > 0 && (
+          <Aavegotchis gotchis={gotchis} getChannelingSignature={getChannelingSignature} />
         )}
 
-        {realmIds && realmIds.length > 0 && (
-          <Parcels
-            readContracts={readContracts}
-            address={impersonate || address}
-            childrenIds={childrenOf}
-            realmIds={realmIds}
-            provider={provider}
-            targetNetwork={targetNetwork}
-            contracts={externalContracts[targetNetwork.chainId].contracts}
-            getChannelingSignature={getChannelingSignature}
-          />
-        )}
+        {parcels && parcels.length > 0 && <Parcels parcels={parcels} />}
       </div>
       <div className={`mt-24`}>
         <Footer {...{ contractConfig, targetNetwork }}></Footer>

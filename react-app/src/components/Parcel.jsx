@@ -51,12 +51,16 @@ export default function Parcel({ parcel }) {
         {parcel.nextChannelAt && (
           <>
             <div className="sm:col-span-3">
-              <dt className="text-sm font-medium text-gray-500 ">Next channel</dt>
+              <dt
+                className="cursor-pointer text-sm font-medium text-gray-500"
+              >
+                Next channel
+              </dt>
               <dd
                 className="mt-1 text-sm text-gray-900"
                 title={moment(parcel.nextChannelAt).format("MMM DD, YYYY [at] hh:mm a")}
               >
-                {moment(parcel.nextChannelAt).fromNow()}
+                {parcel.channelable ? "Now" : moment(parcel.nextChannelAt).fromNow()}
               </dd>
             </div>
           </>

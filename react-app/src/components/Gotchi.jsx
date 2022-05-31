@@ -1,17 +1,18 @@
 import moment from "moment";
 import { ethers } from "ethers";
+import getChannelingCutoffTimeInUTC from "../helpers/getChannelingCutoffTimeInUTC";
 
-export default function Gotchi({ pet, getChannelingSignature }) {
+export default function Gotchi({ pet }) {
   return (
     <div className="">
       <div className="space-y-1 text-lg font-medium leading-6">
         <h3 className={` text-center text-purple-500`}>
           <a
-            href={`https://app.aavegotchi.com/gotchi/${ethers.BigNumber.from(pet.aavegotchi.tokenId).toString()}`}
+            href={`https://app.aavegotchi.com/gotchi/${ethers.BigNumber.from(pet.gotchiId).toString()}`}
             target={`_blank`}
             className={`text-purple-500`}
           >
-            {pet.aavegotchi.name}
+            {pet.name}
           </a>
         </h3>
       </div>
@@ -20,77 +21,83 @@ export default function Gotchi({ pet, getChannelingSignature }) {
           <dt className="text-sm font-medium text-gray-500">Last Interaction</dt>
           <dd
             className="mt-1 text-sm text-gray-900"
-            title={moment(ethers.BigNumber.from(pet.aavegotchi.lastInteracted).toNumber() * 1000).format(
-              "MMM DD, YYYY [at] hh:mm a",
-            )}
+            title={moment(parseInt(pet.lastInteracted) * 1000).format("MMM DD, YYYY [at] hh:mm a")}
           >
-            {moment(ethers.BigNumber.from(pet.aavegotchi.lastInteracted).toNumber() * 1000).fromNow()}
+            {moment(parseInt(pet.lastInteracted) * 1000).fromNow()}
           </dd>
         </div>
         <div className="sm:col-span-1">
           <dt className="text-sm font-medium text-gray-500  sm:text-right">Next Interaction</dt>
           <dd
             className="mt-1 text-sm text-gray-900 sm:text-right"
-            title={moment(
-              ethers.BigNumber.from(pet.aavegotchi.lastInteracted).toNumber() * 1000 + 60 * 60 * 12 * 1000,
-            ).format("MMM DD, YYYY [at] hh:mm a")}
+            title={moment(parseInt(pet.lastInteracted) * 1000 + 60 * 60 * 12 * 1000).format(
+              "MMM DD, YYYY [at] hh:mm a",
+            )}
           >
-            {moment(
-              ethers.BigNumber.from(pet.aavegotchi.lastInteracted).toNumber() * 1000 + 60 * 60 * 12 * 1000,
-            ).fromNow()}
+            {moment(parseInt(pet.lastInteracted) * 1000 + 60 * 60 * 12 * 1000).fromNow()}
           </dd>
         </div>
+
         <div className="sm:col-span-1">
-          <dt className="text-sm font-medium text-gray-500">Escrow</dt>
+          <dt className="text-sm font-medium text-gray-500">Total XP</dt>
+          <dd className="mt-1 text-sm text-gray-900">{pet.experience}</dd>
+        </div>
+
+        <div className="sm:col-span-1">
+          <dt className="text-sm font-medium text-gray-500  sm:text-right">Kinship</dt>
+          <dd className="mt-1 text-sm text-gray-900  sm:text-right">{pet.kinship}</dd>
+        </div>
+
+        <div className="sm:col-span-1">
+          <dt className="text-sm font-medium text-gray-500">Pocket</dt>
           <dd className="mt-1 text-sm text-gray-900">
-            <a
-              href={`https://polygonscan.com/address/${pet.aavegotchi.escrow}`}
-              target={`_blank`}
-              className={`text-purple-500`}
-            >
-              {`${pet.aavegotchi.escrow.substr(0, 6)}...${pet.aavegotchi.escrow.substr(-6, 6)}`}
+            <a href={`https://polygonscan.com/address/${pet.escrow}`} target={`_blank`} className={`text-purple-500`}>
+              {`${pet.escrow.substr(0, 6)}...${pet.escrow.substr(-6, 6)}`}
             </a>
           </dd>
         </div>
         <div className="sm:col-span-1">
-          <dt className="text-sm font-medium text-gray-500  sm:text-right">Rented out</dt>
-          <dd className="mt-1 text-sm text-gray-900  sm:text-right">{pet.lendingInfo.borrower ? "Yes" : "Not yet"}</dd>
+          <dt className="text-sm font-medium text-gray-500  sm:text-right">{pet.borrowed ? "Borrowed" : "Rented"}</dt>
+          <dd className="mt-1 text-sm text-gray-900  sm:text-right">{pet.borrower ? "Yes" : "No"}</dd>
         </div>
-        {pet.lendingInfo.borrower && (
+        {pet.borrower && (
           <>
             <div className="sm:col-span-1">
-              <dt className="text-sm font-medium text-gray-500 ">Borrower</dt>
+              <dt className="text-sm font-medium text-gray-500 ">{pet.owned ? "Borrower" : "Lender"}</dt>
               <dd className="mt-1 text-sm text-gray-900">
                 <a
-                  href={`https://polygonscan.com/address/${pet.lendingInfo.borrower}`}
+                  href={`https://polygonscan.com/address/${pet.owned ? pet.borrower : pet.lender}`}
                   target={`_blank`}
                   className={`text-purple-500`}
                 >
-                  {`${pet.lendingInfo.borrower.substr(0, 6)}...${pet.lendingInfo.borrower.substr(-6, 6)}`}
+                  {`${(pet.owned ? pet.borrower : pet.lender).substr(0, 6)}...${(pet.owned
+                    ? pet.borrower
+                    : pet.lender
+                  ).substr(-6, 6)}`}
                 </a>
               </dd>
             </div>
             <div className="sm:col-span-1">
               <dt className="text-sm font-medium text-gray-500  sm:text-right">Revenue Split</dt>
               <dd className="mt-1 text-sm text-gray-900  sm:text-right">
-                {pet.lendingInfo.revenueSplit[0]}/{pet.lendingInfo.revenueSplit[1]}/{pet.lendingInfo.revenueSplit[2]}
+                {pet.revenueSplit[0]}/{pet.revenueSplit[1]}/{pet.revenueSplit[2]}
               </dd>
             </div>
             <div className="sm:col-span-2">
-              <dt className="text-sm font-medium text-gray-500">Lent at</dt>
-              <dd className="mt-1 text-sm text-gray-900" title={moment(pet.lendingInfo.timeAgreed * 1000).fromNow()}>
-                {moment(pet.lendingInfo.timeAgreed * 1000).format("MMM DD, YYYY [at] hh:mm a")}
+              <dt className="text-sm font-medium text-gray-500">{pet.owned ? "Lent at" : "Borrowed at"}</dt>
+              <dd className="mt-1 text-sm text-gray-900" title={moment(parseInt(pet.timeAgreed) * 1000).fromNow()}>
+                {moment(parseInt(pet.timeAgreed) * 1000).format("MMM DD, YYYY [at] hh:mm a")}
               </dd>
             </div>
             <div className="sm:col-span-2">
-              <dt className="text-sm font-medium text-gray-500">Lending expires at</dt>
+              <dt className="text-sm font-medium text-gray-500">{pet.owned ? "Lending" : "Borrowing"} expires at</dt>
               <dd
                 className="mt-1 text-sm text-gray-900"
-                title={moment((pet.lendingInfo.timeAgreed + pet.lendingInfo.period) * 1000).fromNow()}
+                title={moment((parseInt(pet.timeAgreed) + parseInt(pet.period)) * 1000).fromNow()}
               >
-                {moment((pet.lendingInfo.timeAgreed + pet.lendingInfo.period) * 1000).isBefore(moment.now())
+                {moment((parseInt(pet.timeAgreed) + parseInt(pet.period)) * 1000).isBefore(moment.now())
                   ? "Expired"
-                  : moment((pet.lendingInfo.timeAgreed + pet.lendingInfo.period) * 1000).format(
+                  : moment((parseInt(pet.timeAgreed) + parseInt(pet.period)) * 1000).format(
                       "MMM DD, YYYY [at] hh:mm a",
                     )}
               </dd>
@@ -99,25 +106,29 @@ export default function Gotchi({ pet, getChannelingSignature }) {
         )}
 
         <>
-          <div
-            className="sm:col-span-1"
-            onClick={() =>
-              getChannelingSignature(
-                null,
-                ethers.BigNumber.from(pet.aavegotchi.tokenId).toNumber(),
-                pet.lastChanneled,
-                pet.realm.ids,
-              )
-            }
-          >
+          <div className="sm:col-span-1">
             <dt className="text-sm font-medium text-gray-500 ">Last channeled</dt>
             <dd
               className="mt-1 text-sm text-gray-900"
-              title={moment(ethers.BigNumber.from(pet.lastChanneled).toNumber() * 1000).format(
-                "MMM DD, YYYY [at] hh:mm a",
-              )}
+              title={moment(parseInt(pet.lastChanneled) * 1000).format("MMM DD, YYYY [at] hh:mm a")}
             >
-              {moment(ethers.BigNumber.from(pet.lastChanneled).toNumber() * 1000).fromNow()}
+              {moment(parseInt(pet.lastChanneled) * 1000).fromNow()}
+            </dd>
+          </div>
+
+          <div className="sm:col-span-1">
+            <dt
+              className="cursor-pointer text-sm font-medium text-gray-500 sm:text-right"
+            >
+              Next channel
+            </dt>
+            <dd
+              className="mt-1 text-sm text-gray-900 sm:text-right"
+              title={moment(
+                pet.canChannelNow ? getChannelingCutoffTimeInUTC() : getChannelingCutoffTimeInUTC(1),
+              ).format("MMM DD, YYYY [at] hh:mm a")}
+            >
+              {pet.canChannelNow ? "Now" : moment(getChannelingCutoffTimeInUTC(1)).fromNow()}
             </dd>
           </div>
         </>

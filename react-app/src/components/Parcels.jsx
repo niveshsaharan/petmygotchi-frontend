@@ -1,103 +1,13 @@
-import { useEffect, useState } from "react";
 import Loader from "./Loader";
 import Parcel from "./Parcel";
-import { ApolloClient, InMemoryCache, gql, useQuery, useLazyQuery } from "@apollo/client";
-import getAaltarByLevel from "../helpers/getAaltarByLevel";
-import moment from "moment";
-
-const aavegotchiRealmMaticClient = new ApolloClient({
-  uri: "https://api.thegraph.com/subgraphs/name/aavegotchi/aavegotchi-realm-matic",
-  cache: new InMemoryCache(),
-});
-
-const gotchiverseMaticClient = new ApolloClient({
-  uri: "https://api.thegraph.com/subgraphs/name/aavegotchi/gotchiverse-matic",
-  cache: new InMemoryCache(),
-});
 
 export default function Parcels(props) {
-  const [parcels, setParcels] = useState([]);
-
-  const getParcels = gql`
-    query GetParcels($owner: String!) {
-      parcels(first: 1000, orderBy: tokenId, where: { tokenId_gt: 0, owner: $owner }) {
-        id
-        parcelHash
-        district
-        size
-      }
-    }
-  `;
-
-  const {
-    loading,
-    error,
-    data: parcelsQueryData,
-  } = useQuery(getParcels, {
-    variables: {
-      owner: props.address.toLowerCase(),
-    },
-    client: aavegotchiRealmMaticClient,
-    onCompleted: ({ parcels: data }) => {
-      setParcels(data);
-    },
-  });
-
-  const getParcelsDataQuery = gql`
-    query GetParcelsData($ids: [String!]!) {
-      parcels(where: { id_in: $ids }) {
-        id
-        equippedInstallations
-        lastChanneledAlchemica
-      }
-    }
-  `;
-
-  const [getParcelsData] = useLazyQuery(getParcelsDataQuery, {
-    client: gotchiverseMaticClient,
-    onCompleted: ({ parcels: data }) => {
-      const parcelData = [...parcels].reduce((prev, curr) => {
-        prev[curr.id] = { ...curr };
-        return prev;
-      }, {});
-
-      data.forEach(d => {
-        const aaltar = getAaltarByLevel(d.equippedInstallations);
-        parcelData[d.id] = parcelData[d.id] || {};
-        parcelData[d.id].equippedInstallations = d.equippedInstallations;
-        parcelData[d.id].lastChanneled = parseInt(d.lastChanneledAlchemica) * 1000;
-        parcelData[d.id].aaltar = aaltar;
-
-        if (aaltar) {
-          if (parcelData[d.id].lastChanneled) {
-            parcelData[d.id].nextChannelAt = parseInt(parcelData[d.id].lastChanneled) + aaltar.hours * 60 * 60 * 1000;
-          } else {
-            parcelData[d.id].nextChannelAt = new Date().getTime();
-          }
-        }
-      });
-
-      setParcels(Object.values(parcelData));
-    },
-  });
-
-  useEffect(() => {
-    if (parcelsQueryData && parcelsQueryData.parcels && parcelsQueryData.parcels.length) {
-      getParcelsData({ variables: { ids: parcelsQueryData.parcels.map(parcel => parcel.id) } });
-    }
-  }, [parcelsQueryData, getParcelsData]);
-
-  if (loading) {
-    return null;
-  }
-  if (error) {
-    return null;
-  }
+  const parcels = props.parcels;
 
   return (
     <>
       {parcels && parcels.length > 0 && (
-        <div className="mt-16">
+        <div className="mt-8">
           <div className="mx-auto py-8 px-4 sm:py-12 sm:px-6 lg:px-8">
             <div className="space-y-12">
               <div className="space-y-5 sm:space-y-4 md:max-w-xl lg:max-w-3xl xl:max-w-none">
@@ -136,11 +46,7 @@ export default function Parcels(props) {
                       )}*/}
 
                       {parcel.parcelHash && (
-                        <Parcel
-                          parcel={parcel}
-                          getChannelingSignature={props.getChannelingSignature}
-                          gotchis={props.childrenIds}
-                        />
+                        <Parcel parcel={parcel} />
                       )}
 
                       {!parcel.parcelHash && (
@@ -149,7 +55,7 @@ export default function Parcels(props) {
                         </div>
                       )}
 
-                      {parcel.nextChannelAt && moment().isSameOrAfter(parcel.nextChannelAt) && (
+                      {/*{parcel.nextChannelAt && moment().isSameOrAfter(parcel.nextChannelAt) && (
                         <div className={`mt-5 flex items-center`}>
                           <button
                             type="button"
@@ -159,7 +65,7 @@ export default function Parcels(props) {
                             Channel Alchemica
                           </button>
                         </div>
-                      )}
+                      )}*/}
                     </div>
                   </li>
                 ))}
